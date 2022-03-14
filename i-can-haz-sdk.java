@@ -1,7 +1,5 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
 //JAVA 17
-//JAVAC_OPTIONS --enable-preview -source 17
-//JAVA_OPTIONS --enable-preview
 //DEPS info.picocli:picocli:4.6.3
 //DEPS info.picocli:picocli-codegen:4.6.3
 //DEPS hu.webarticum:tree-printer:2.0.0
@@ -42,15 +40,16 @@ import static java.util.stream.Collectors.flatMapping;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.generate;
+import static picocli.CommandLine.Help.*;
 
-@Command(name = "ichs", mixinStandardHelpOptions = true, version = "0.1.0",
+@Command(name = "i-can-haz-sdk", mixinStandardHelpOptions = true, version = "0.1.0",
         description = "Checks if a ZIP archive is suitable for publication via SDKMAN!.")
-class ichs implements Callable<Integer> {
+class ICanHazSdk implements Callable<Integer> {
     @Parameters(index = "0", description = "The URL where the archive is located.")
     private URL url;
 
     public static void main(String... args) {
-        System.exit(new CommandLine(new ichs()).execute(args));
+        System.exit(new CommandLine(new ICanHazSdk()).execute(args));
     }
 
     @Override
@@ -60,40 +59,55 @@ class ichs implements Callable<Integer> {
             rootDirectories
                 .entrySet()
                 .stream()
-                .map(ichs::directoryTree)
-                .collect(buildTree(lastPathSegment(url.getPath())));
+                .map(ICanHazSdk::directoryTree)
+                .collect(buildTree(highlight(lastPathSegment(url.getPath()))));
 
         new ListingTreePrinter().print(directoryTree);
 
-        var result =
-            combine(hasSingleTopLevelDirectory(rootDirectories), hasBinDirectory(rootDirectories))
-                .ap(constant("Your archive is suitable for publication via SDKMAN!"));
+        out.println();
 
-        return switch (result) {
-            case Valid<Seq<String>, String> valid -> {
-                out.println(valid.get());
-                yield 0;
-            }
-            case Invalid<Seq<String>, String> invalid -> {
-                invalid.getError().forEach(out::println);
-                yield 1;
-            }
-            default -> throw new IllegalStateException("Unexpected value: " + result);
-        };
+        var result =
+            combine(hasSingleTopLevelDirectory(rootDirectories), hasSecondLevelBinDirectory(rootDirectories))
+                .ap((hasSingleTopLevelDirectory, hasSecondLevelBinDirectory) -> List.of(hasSingleTopLevelDirectory, hasSecondLevelBinDirectory));
+
+        if (result.isInvalid()) {
+            result.getError().map(ICanHazSdk::failure).forEach(out::println);
+
+            return 1;
+        }
+
+        result.get().stream().map(ICanHazSdk::success).forEach(out::println);
+
+        return 0;
+    }
+
+    private static String failure(String text) {
+        return Ansi.AUTO.string("@|red X|@ %s").formatted(text);
+    }
+
+    private static String success(String text) {
+        return Ansi.AUTO.string("@|green ✓|@ %s").formatted(text);
+    }
+
+    private static String highlight(String text) {
+        return Ansi.AUTO.string("@|bold,underline %s|@").formatted(text);
     }
 
     private static Validation<String, String> hasSingleTopLevelDirectory(Map<String, List<String>> directoryTree) {
-        return directoryTree.size() == 1 ? valid("valid") : invalid("SKDMAN! requires a single, top-level directory.");
-    }
-
-    private static Validation<String, String> hasBinDirectory(Map<String, List<String>> directoryTree) {
         return
-            directoryTree.size() == 1 && hasBin(directoryTree.values())
-                ? valid("valid")
-                : invalid("SDKMAN! requires a bin/ directory directly underneath the root directly.");
+            directoryTree.size() == 1
+                ? valid("The archive contains a top-level directory.")
+                : invalid("SKDMAN! requires a single, top-level directory.");
     }
 
-    private static boolean hasBin(Collection<List<String>> directoryTree) {
+    private static Validation<String, String> hasSecondLevelBinDirectory(Map<String, List<String>> directoryTree) {
+        return
+            directoryTree.size() == 1 && hasBinDirectory(directoryTree.values())
+                ? valid("The archive contains bin/ directory.")
+                : invalid("SDKMAN! requires a bin/ directory directly under the root directory.");
+    }
+
+    private static boolean hasBinDirectory(Collection<List<String>> directoryTree) {
         return directoryTree.stream().anyMatch(directory -> directory.contains("bin/"));
     }
 
@@ -128,8 +142,8 @@ class ichs implements Callable<Integer> {
                 generate(wrap(inputStream::getNextEntry))
                     .takeWhile(Objects::nonNull)
                     .map(ZipEntry::getName)
-                    .filter(toPredicate(ichs::isDirectory).and(ichs::isAtMostSecondLevel))
-                    .collect(groupingBy(ichs::rootDirectory, flatMapping(ichs::childDirectory, toList())));
+                    .filter(toPredicate(ICanHazSdk::isDirectory).and(ICanHazSdk::isAtMostSecondLevel))
+                    .collect(groupingBy(ICanHazSdk::rootDirectory, flatMapping(ICanHazSdk::childDirectory, toList())));
         }
     }
 
