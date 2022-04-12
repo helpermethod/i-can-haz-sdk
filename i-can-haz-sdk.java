@@ -1,9 +1,10 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
-//JAVA 17
+//JAVA 18
 //DEPS info.picocli:picocli:4.6.3
 //DEPS info.picocli:picocli-codegen:4.6.3
 //DEPS hu.webarticum:tree-printer:2.0.0
 //DEPS io.vavr:vavr:0.10.4
+//DEPS com.vdurmont:emoji-java:5.1.1
 
 import hu.webarticum.treeprinter.SimpleTreeNode;
 import hu.webarticum.treeprinter.TreeNode;
@@ -42,6 +43,8 @@ import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.generate;
 import static picocli.CommandLine.Help.*;
 
+import com.vdurmont.emoji.EmojiParser;
+
 @Command(name = "i-can-haz-sdk", mixinStandardHelpOptions = true, version = "0.1.0",
         description = "Checks if a ZIP archive is suitable for publication via SDKMAN!.")
 class ICanHazSdk implements Callable<Integer> {
@@ -68,6 +71,7 @@ class ICanHazSdk implements Callable<Integer> {
 
         var result =
             combine(hasSingleTopLevelDirectory(rootDirectories), hasSecondLevelBinDirectory(rootDirectories))
+                .fold()
                 .ap((hasSingleTopLevelDirectory, hasSecondLevelBinDirectory) -> List.of(hasSingleTopLevelDirectory, hasSecondLevelBinDirectory));
 
         if (result.isInvalid()) {
@@ -78,15 +82,18 @@ class ICanHazSdk implements Callable<Integer> {
 
         result.get().stream().map(ICanHazSdk::success).forEach(out::println);
 
+        out.println();
+        out.println(EmojiParser.parseToUnicode(":tada: Your archive is suitable for publication via SDKMAN!"));
+
         return 0;
     }
 
     private static String failure(String text) {
-        return Ansi.AUTO.string("@|red X|@ %s").formatted(text);
+        return EmojiParser.parseToUnicode(":x: %s").formatted(text);
     }
 
     private static String success(String text) {
-        return Ansi.AUTO.string("@|green ✓|@ %s").formatted(text);
+        return EmojiParser.parseToUnicode(":white_check_mark: %s").formatted(text);
     }
 
     private static String highlight(String text) {
@@ -95,16 +102,16 @@ class ICanHazSdk implements Callable<Integer> {
 
     private static Validation<String, String> hasSingleTopLevelDirectory(Map<String, List<String>> directoryTree) {
         return
-            directoryTree.size() == 1
-                ? valid("The archive contains a top-level directory.")
-                : invalid("SKDMAN! requires a single, top-level directory.");
+                directoryTree.size() == 1
+                        ? valid("The archive contains a top-level directory.")
+                        : invalid("SKDMAN! requires a single, top-level directory.");
     }
 
     private static Validation<String, String> hasSecondLevelBinDirectory(Map<String, List<String>> directoryTree) {
         return
-            directoryTree.size() == 1 && hasBinDirectory(directoryTree.values())
-                ? valid("The archive contains bin/ directory.")
-                : invalid("SDKMAN! requires a bin/ directory directly under the root directory.");
+                directoryTree.size() == 1 && hasBinDirectory(directoryTree.values())
+                        ? valid("The archive contains a bin/ directory.")
+                        : invalid("SDKMAN! requires a bin/ directory directly under the root directory.");
     }
 
     private static boolean hasBinDirectory(Collection<List<String>> directoryTree) {
@@ -117,33 +124,33 @@ class ICanHazSdk implements Callable<Integer> {
 
     private static TreeNode directoryTree(Map.Entry<String, List<String>> directory) {
         return
-            directory
-                .getValue()
-                .stream()
-                .map(SimpleTreeNode::new)
-                .collect(buildTree(directory.getKey()));
+                directory
+                        .getValue()
+                        .stream()
+                        .map(SimpleTreeNode::new)
+                        .collect(buildTree(directory.getKey()));
     }
 
     private static Collector<TreeNode, SimpleTreeNode, SimpleTreeNode> buildTree(String content) {
         return Collector.of(
-            () -> new SimpleTreeNode(content),
-            SimpleTreeNode::addChild,
-            (left, right) -> {
-                right.children().forEach(left::addChild);
+                () -> new SimpleTreeNode(content),
+                SimpleTreeNode::addChild,
+                (left, right) -> {
+                    right.children().forEach(left::addChild);
 
-                return left;
-            }
+                    return left;
+                }
         );
     }
 
     private static Map<String, List<String>> rootDirectories(URL url) throws IOException {
         try (var inputStream = new ZipInputStream(newUrlConnectionInputStream(url))) {
             return
-                generate(wrap(inputStream::getNextEntry))
-                    .takeWhile(Objects::nonNull)
-                    .map(ZipEntry::getName)
-                    .filter(toPredicate(ICanHazSdk::isDirectory).and(ICanHazSdk::isAtMostSecondLevel))
-                    .collect(groupingBy(ICanHazSdk::rootDirectory, flatMapping(ICanHazSdk::childDirectory, toList())));
+                    generate(wrap(inputStream::getNextEntry))
+                            .takeWhile(Objects::nonNull)
+                            .map(ZipEntry::getName)
+                            .filter(toPredicate(ICanHazSdk::isDirectory).and(ICanHazSdk::isAtMostSecondLevel))
+                            .collect(groupingBy(ICanHazSdk::rootDirectory, flatMapping(ICanHazSdk::childDirectory, toList())));
         }
     }
 
