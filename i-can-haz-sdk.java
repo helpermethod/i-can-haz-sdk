@@ -31,9 +31,14 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import static com.vdurmont.emoji.EmojiParser.parseToUnicode;
-import static io.vavr.control.Validation.*;
+import static io.vavr.control.Validation.Valid;
+import static io.vavr.control.Validation.combine;
+import static io.vavr.control.Validation.invalid;
+import static io.vavr.control.Validation.valid;
 import static java.lang.System.out;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.flatMapping;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Stream.generate;
 import static picocli.CommandLine.Help.Ansi;
 
