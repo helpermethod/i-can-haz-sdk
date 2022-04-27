@@ -5,7 +5,6 @@
 //DEPS hu.webarticum:tree-printer:2.0.0
 //DEPS com.vdurmont:emoji-java:5.1.1
 //DEPS io.vavr:vavr:0.10.4
-//DEPS com.github.lukfor:magic-progress:0.3.2
 
 import hu.webarticum.treeprinter.SimpleTreeNode;
 import hu.webarticum.treeprinter.TreeNode;
