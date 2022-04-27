@@ -1,17 +1,17 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
-//JAVA 17
+//JAVA 18
 //DEPS info.picocli:picocli:4.6.3
 //DEPS info.picocli:picocli-codegen:4.6.3
 //DEPS hu.webarticum:tree-printer:2.0.0
+//DEPS com.vdurmont:emoji-java:5.1.1
 //DEPS io.vavr:vavr:0.10.4
+//DEPS com.github.lukfor:magic-progress:0.3.2
 
 import hu.webarticum.treeprinter.SimpleTreeNode;
 import hu.webarticum.treeprinter.TreeNode;
 import hu.webarticum.treeprinter.printer.listing.ListingTreePrinter;
 import io.vavr.collection.Seq;
 import io.vavr.control.Validation;
-import io.vavr.control.Validation.Invalid;
-import io.vavr.control.Validation.Valid;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
@@ -31,21 +31,18 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import static io.vavr.Function2.constant;
-import static io.vavr.control.Validation.combine;
-import static io.vavr.control.Validation.invalid;
-import static io.vavr.control.Validation.valid;
+import static com.vdurmont.emoji.EmojiParser.parseToUnicode;
+import static io.vavr.control.Validation.*;
 import static java.lang.System.out;
-import static java.util.stream.Collectors.flatMapping;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.*;
 import static java.util.stream.Stream.generate;
-import static picocli.CommandLine.Help.*;
+import static picocli.CommandLine.Help.Ansi;
+
 
 @Command(name = "i-can-haz-sdk", mixinStandardHelpOptions = true, version = "0.1.0",
-        description = "Checks if a ZIP archive is suitable for publication via SDKMAN!.")
+        description = "Checks if a ZIP archive is ready to be published to SDKMAN!.")
 class ICanHazSdk implements Callable<Integer> {
-    @Parameters(index = "0", description = "The URL where the archive is located.")
+    @Parameters(index = "0", description = "The archive's URL.")
     private URL url;
 
     public static void main(String... args) {
@@ -65,32 +62,46 @@ class ICanHazSdk implements Callable<Integer> {
         new ListingTreePrinter().print(directoryTree);
 
         out.println();
+        out.println(header("Checks"));
+        out.println();
 
-        var result =
+        Validation<Seq<String>, Seq<String>> validation =
             combine(hasSingleTopLevelDirectory(rootDirectories), hasSecondLevelBinDirectory(rootDirectories))
-                .ap((hasSingleTopLevelDirectory, hasSecondLevelBinDirectory) -> List.of(hasSingleTopLevelDirectory, hasSecondLevelBinDirectory));
+                .ap(io.vavr.collection.List::of);
 
-        if (result.isInvalid()) {
-            result.getError().map(ICanHazSdk::failure).forEach(out::println);
+        validation
+            .fold(failure -> failure.map(ICanHazSdk::failure), success -> success.map(ICanHazSdk::success))
+            .forEach(out::println);
 
-            return 1;
+        out.println();
+        out.println(header("Summary"));
+        out.println();
+
+        if (validation instanceof Valid<Seq<String>, Seq<String>>) {
+            out.println(parseToUnicode(":party_face: Your archive is ready to be published to SDKMAN!"));
+
+            return 0;
         }
 
-        result.get().stream().map(ICanHazSdk::success).forEach(out::println);
+        out.println(parseToUnicode(":pleading_face: Some issues need to be resolved before publishing to SDKMAN!."));
 
-        return 0;
+        return 1;
     }
 
     private static String failure(String text) {
-        return Ansi.AUTO.string("@|red X|@ %s").formatted(text);
+        return parseToUnicode(":x: %s".formatted(text));
     }
 
     private static String success(String text) {
-        return Ansi.AUTO.string("@|green ✓|@ %s").formatted(text);
+        return parseToUnicode(":white_check_mark: %s".formatted(text));
+    }
+
+    private static String header(String text) {
+        return Ansi.AUTO.string("@|bold %s|@".formatted(text));
     }
 
     private static String highlight(String text) {
-        return Ansi.AUTO.string("@|bold,underline %s|@").formatted(text);
+        return Ansi.AUTO.string("@|bold,underline %s|@".formatted(text));
     }
 
     private static Validation<String, String> hasSingleTopLevelDirectory(Map<String, List<String>> directoryTree) {
@@ -103,8 +114,8 @@ class ICanHazSdk implements Callable<Integer> {
     private static Validation<String, String> hasSecondLevelBinDirectory(Map<String, List<String>> directoryTree) {
         return
             directoryTree.size() == 1 && hasBinDirectory(directoryTree.values())
-                ? valid("The archive contains bin/ directory.")
-                : invalid("SDKMAN! requires a bin/ directory directly under the root directory.");
+                ? valid("The archive contains a bin/ directory.")
+                : invalid("SDKMAN! requires a bin/ directory beneath the root directory.");
     }
 
     private static boolean hasBinDirectory(Collection<List<String>> directoryTree) {
@@ -142,12 +153,12 @@ class ICanHazSdk implements Callable<Integer> {
                 generate(wrap(inputStream::getNextEntry))
                     .takeWhile(Objects::nonNull)
                     .map(ZipEntry::getName)
-                    .filter(toPredicate(ICanHazSdk::isDirectory).and(ICanHazSdk::isAtMostSecondLevel))
+                    .filter(use(ICanHazSdk::isDirectory).and(ICanHazSdk::isAtMostSecondLevel))
                     .collect(groupingBy(ICanHazSdk::rootDirectory, flatMapping(ICanHazSdk::childDirectory, toList())));
         }
     }
 
-    private static <T> Predicate<T> toPredicate(Predicate<T> p) {
+    private static <T> Predicate<T> use(Predicate<T> p) {
         return p;
     }
 
